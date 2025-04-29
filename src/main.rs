@@ -133,8 +133,13 @@ fn copy_music(
         let num_b = extract_leading_number(b);
 
         match (num_a, num_b) {
-            // Both paths have leading numbers: compare the numbers
-            (Some(na), Some(nb)) => na.cmp(&nb),
+            // Both paths have leading numbers: compare the numbers if the are different
+            (Some(na), Some(nb)) => {
+                if na == nb {
+                    return a.cmp(b);
+                }
+                na.cmp(&nb)
+            }
             // Only path 'a' has a leading number: 'a' comes first
             (Some(_), None) => Ordering::Less,
             // Only path 'b' has a leading number: 'b' comes first
