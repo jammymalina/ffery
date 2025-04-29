@@ -9,6 +9,7 @@
 Currently, `ffery` supports the following command:
 
 *   **`remove-prefix`**: Removes a specified prefix from filenames matching a given extension within a target directory.
+*   **`copy-music`** Recursively copies files and directories from a source location to a destination, with specific sorting logic designed for music players that rely on file copy order. Many simple music players (especially older MP3 players or car stereos reading from USB drives) play tracks in the order they were written to the filesystem, not necessarily alphabetical or based on track numbers in tags
 
 ## Installation
 
