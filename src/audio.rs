@@ -16,6 +16,47 @@ static SUPPORTED_AUDIO_EXTENSIONS: &[&str] = &[
 ];
 
 #[derive(Serialize)]
+struct SongsAnalysis {
+    missing_song_info: MissingSongInfo,
+    song_metadata: Vec<SongMetadata>,
+}
+
+impl SongsAnalysis {
+    fn from_song_metadata(song_metadata: Vec<SongMetadata>) -> Self {
+        let (artist, title, album, disc_number, track_number) =
+            song_metadata.iter().fold((0, 0, 0, 0, 0), |acc, metadata| {
+                (
+                    acc.0 + u32::from(metadata.artist.is_none()),
+                    acc.1 + u32::from(metadata.title.is_none()),
+                    acc.2 + u32::from(metadata.album.is_none()),
+                    acc.3 + u32::from(metadata.disc_number.is_none()),
+                    acc.4 + u32::from(metadata.track_number.is_none()),
+                )
+            });
+
+        Self {
+            missing_song_info: MissingSongInfo {
+                artist,
+                title,
+                album,
+                disc_number,
+                track_number,
+            },
+            song_metadata,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct MissingSongInfo {
+    artist: u32,
+    title: u32,
+    album: u32,
+    disc_number: u32,
+    track_number: u32,
+}
+
+#[derive(Serialize)]
 struct SongMetadata {
     artist: Option<String>,
     title: Option<String>,
@@ -37,15 +78,26 @@ impl SongMetadata {
             title: get_entry_from_tag("TITLE"),
             album: get_entry_from_tag("ALBUM"),
             disc_number: get_entry_from_tag("DISCNUMBER").and_then(|val| val.parse::<u32>().ok()),
-            track_number: get_entry_from_tag("TRACKNUMBER").and_then(|val| val.parse::<u32>().ok()),
+            track_number: get_entry_from_tag("TRACKNUMBER")
+                .and_then(|val| Self::parse_track_number(&val)),
         }
+    }
+
+    fn parse_track_number(val: &str) -> Option<u32> {
+        let num_part_len = val.chars().take_while(char::is_ascii_digit).count();
+        if num_part_len == 0 {
+            return None;
+        }
+
+        let num_str = &val[0..num_part_len];
+        num_str.parse().ok()
     }
 }
 
 pub fn start_analyze_music(src: &PathBuf, output: &PathBuf) -> anyhow::Result<()> {
     if src.is_file() {
         let song_metadata = get_song_metadata(src)?;
-        store_song_metadata(&[song_metadata], output)?;
+        store_song_metadata(vec![song_metadata], output)?;
         return Ok(());
     }
 
@@ -54,7 +106,7 @@ pub fn start_analyze_music(src: &PathBuf, output: &PathBuf) -> anyhow::Result<()
 
     let results: Vec<_> = analyze_music(src, &bar)?;
     bar.finish();
-    store_song_metadata(&results, output)?;
+    store_song_metadata(results, output)?;
 
     Ok(())
 }
@@ -104,12 +156,14 @@ fn get_song_metadata(f: &Path) -> anyhow::Result<SongMetadata> {
     Ok(SongMetadata::from_tag(&tag))
 }
 
-fn store_song_metadata(results: &[SongMetadata], output: &PathBuf) -> anyhow::Result<()> {
+fn store_song_metadata(results: Vec<SongMetadata>, output: &PathBuf) -> anyhow::Result<()> {
     if let Some(parent_dir) = output.parent() {
         fs::create_dir_all(parent_dir)?;
     }
 
-    let json_data = serde_json::to_string(results)?;
+    let analysis = SongsAnalysis::from_song_metadata(results);
+
+    let json_data = serde_json::to_string(&analysis)?;
     fs::write(output, json_data)?;
 
     Ok(())
