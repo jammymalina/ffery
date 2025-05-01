@@ -1,7 +1,6 @@
 use anyhow::{Context, anyhow};
 use indicatif::ProgressBar;
 use serde::Serialize;
-use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::{
     fs, io,
@@ -102,12 +101,12 @@ struct MiscSongInfo {
 #[serde_with::skip_serializing_none]
 #[derive(Serialize, Clone)]
 struct SongMetadata {
-    filepath: PathBuf,
     artist: Option<String>,
     title: Option<String>,
     album: Option<String>,
     disc_number: Option<u32>,
     track_number: Option<u32>,
+    filepath: PathBuf,
 }
 
 impl SongMetadata {
@@ -219,13 +218,25 @@ pub fn start_copying_music(
     dest: &Path,
     delay_ms: u64,
     override_files: bool,
+    filename_template: &str,
+    pad_width: usize,
 ) -> anyhow::Result<()> {
     file_utils::validate_dir(src)?;
 
     let file_count = file_utils::count_files(src)?;
     let bar = ProgressBar::new(file_count);
 
-    let result = copy_music(src, dest, delay_ms, override_files, &bar);
+    let template = mustache::compile_str(filename_template)?;
+
+    let result = copy_music(
+        src,
+        dest,
+        delay_ms,
+        override_files,
+        &template,
+        pad_width,
+        &bar,
+    );
     bar.finish();
 
     result
@@ -236,6 +247,8 @@ fn copy_music(
     dest: &Path,
     delay_ms: u64,
     override_files: bool,
+    filename_template: &mustache::Template,
+    pad_width: usize,
     bar: &ProgressBar,
 ) -> anyhow::Result<()> {
     file_utils::validate_dir(src)?;
@@ -243,64 +256,69 @@ fn copy_music(
     let src_content: Vec<_> = fs::read_dir(src)?
         .map(|entry_result| entry_result.map(|entry| entry.path()))
         .collect::<Result<Vec<PathBuf>, io::Error>>()?;
-    let mut files: Vec<_> = src_content
+    let files = src_content
         .clone()
         .into_iter()
-        .filter(|entry| entry.is_file())
-        .collect();
+        .filter(|entry| entry.is_file());
     let mut dirs: Vec<_> = src_content
         .into_iter()
         .filter(|entry| entry.is_dir())
         .collect();
     dirs.sort();
 
-    files.sort_by(|a, b| {
-        let num_a = extract_leading_number(a);
-        let num_b = extract_leading_number(b);
+    let (audio_files, other_files): (Vec<PathBuf>, Vec<PathBuf>) =
+        files.partition(|f| file_utils::file_has_extension(f, SUPPORTED_AUDIO_EXTENSIONS));
 
-        match (num_a, num_b) {
-            // Both paths have leading numbers: compare the numbers if the are different
-            (Some(na), Some(nb)) => {
-                if na == nb {
-                    return a.cmp(b);
-                }
-                na.cmp(&nb)
-            }
-            // Only path 'a' has a leading number: 'a' comes first
-            (Some(_), None) => Ordering::Less,
-            // Only path 'b' has a leading number: 'b' comes first
-            (None, Some(_)) => Ordering::Greater,
-            // Neither path has a leading number: sort them alphabetically
-            // PathBuf implements Ord, which performs a lexicographical comparison.
-            (None, None) => a.cmp(b),
-        }
+    let mut songs = audio_files
+        .into_iter()
+        .map(SongMetadata::from_file)
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    songs.sort_by(|a, b| {
+        a.disc_number
+            .cmp(&b.disc_number)
+            .then(a.track_number.cmp(&b.track_number))
     });
 
-    for f in &files {
-        let os_filename = f
+    for song in &songs {
+        let data = mustache::MapBuilder::new()
+            .insert("artist", &song.artist)?
+            .insert("title", &song.title)?
+            .insert("album", &song.album)?
+            .insert(
+                "disc_number",
+                &song.disc_number.map(|val| format!("{val:0>pad_width$}")),
+            )?
+            .insert(
+                "track_number",
+                &song.track_number.map(|val| format!("{val:0>pad_width$}")),
+            )?
+            .build();
+        let filename = filename_template.render_data_to_string(&data)?;
+
+        let extension = song
+            .filepath
+            .extension()
+            .ok_or_else(|| anyhow!("Unexpected error - no extension found"))?;
+        let mut dest: PathBuf = dest.to_path_buf();
+        dest.push(filename);
+        dest.set_extension(extension);
+
+        file_utils::copy_file(&song.filepath, &dest, override_files)?;
+        sleep(Duration::from_millis(delay_ms));
+
+        bar.inc(1);
+    }
+
+    for f in &other_files {
+        let os_filename = src
             .file_name()
             .ok_or_else(|| anyhow!("Unexpected error - expected filename but none found"))?;
         let mut dest = dest.to_path_buf();
         dest.push(os_filename);
 
-        if dest.exists() && !override_files {
-            bar.inc(1);
-            continue;
-        }
+        file_utils::copy_file(f, &dest, override_files)?;
 
-        if let Some(parent_dir) = dest.parent() {
-            fs::create_dir_all(parent_dir)?;
-        }
-
-        fs::copy(f, &dest).with_context(|| {
-            format!(
-                "Failed to copy file '{}' to '{}'",
-                f.to_str().unwrap_or("unknown"),
-                dest.to_str().unwrap_or("unknown"),
-            )
-        })?;
-
-        sleep(Duration::from_millis(delay_ms));
         bar.inc(1);
     }
 
@@ -310,21 +328,16 @@ fn copy_music(
         })?;
         let mut dest = dest.to_path_buf();
         dest.push(last_dir);
-        copy_music(d, &dest, delay_ms, override_files, bar)?;
+        copy_music(
+            d,
+            &dest,
+            delay_ms,
+            override_files,
+            filename_template,
+            pad_width,
+            bar,
+        )?;
     }
 
     Ok(())
-}
-
-fn extract_leading_number(path: &Path) -> Option<u64> {
-    let os_filename = path.file_name()?;
-    let filename = os_filename.to_str()?;
-
-    let num_part_len = filename.chars().take_while(char::is_ascii_digit).count();
-    if num_part_len == 0 {
-        return None;
-    }
-
-    let num_str = &filename[0..num_part_len];
-    num_str.parse().ok()
 }

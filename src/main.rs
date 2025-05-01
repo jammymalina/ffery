@@ -1,7 +1,6 @@
-use anyhow::Context;
 use audio::start_analyze_music;
 use clap::{Parser, Subcommand};
-use std::{ffi::OsStr, fs, path::PathBuf};
+use std::path::PathBuf;
 
 mod audio;
 mod file_utils;
@@ -37,56 +36,38 @@ enum Commands {
         delay_ms: u64,
         #[arg(long, action)]
         override_files: bool,
+        #[arg(
+            long,
+            default_value_t = String::from("{{#disc_number}}{{disc_number}}-{{/disc_number}}{{track_number}} {{title}}")
+        )]
+        filename_template: String,
+        #[arg(long, default_value_t = 2)]
+        pad_width: usize,
     },
-}
-
-fn remove_prefix(prefix: &str, ext: &str, dir: &PathBuf) -> anyhow::Result<()> {
-    file_utils::validate_dir(dir)?;
-
-    let target_ext = OsStr::new(ext);
-
-    let collected_results: Result<Vec<_>, _> = fs::read_dir(dir)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path: &PathBuf| path.is_file())
-        .filter(|path| path.extension() == Some(target_ext))
-        .filter_map(|path| {
-            path.file_name()
-                .and_then(|os_str| os_str.to_str())
-                .map(str::to_owned)
-        })
-        .map(|filename| {
-            (
-                filename.clone(),
-                filename
-                    .strip_prefix(prefix)
-                    .unwrap_or(&filename)
-                    .trim()
-                    .to_string(),
-            )
-        })
-        .filter(|(_, target_filename)| !target_filename.is_empty())
-        .map(|(src_filename, target_filename)| {
-            fs::rename(dir.join(&src_filename), dir.join(&target_filename)).with_context(|| {
-                format!("Failed to rename file '{src_filename}' to '{target_filename}'")
-            })
-        })
-        .collect();
-
-    collected_results.map(|_| ())
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::RemovePrefix { prefix, ext, dir } => remove_prefix(prefix, ext, dir),
+        Commands::RemovePrefix { prefix, ext, dir } => {
+            file_utils::remove_prefix_from_files(prefix, ext, dir)
+        }
         Commands::AnalyzeMusic { result, src } => start_analyze_music(src, result),
         Commands::CopyMusic {
             src,
             dest,
             delay_ms,
             override_files,
-        } => audio::start_copying_music(src, dest, *delay_ms, *override_files),
+            filename_template,
+            pad_width,
+        } => audio::start_copying_music(
+            src,
+            dest,
+            *delay_ms,
+            *override_files,
+            filename_template,
+            *pad_width,
+        ),
     }
 }
