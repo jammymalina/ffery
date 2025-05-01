@@ -95,7 +95,7 @@ fn count_files_recursive(dir: &PathBuf, extensions: Option<&[&str]>) -> anyhow::
     validate_dir(dir)?;
 
     for entry_result in fs::read_dir(dir)? {
-        let entry = entry_result?; // Handle potential error reading a specific entry
+        let entry = entry_result?;
         let path = entry.path();
 
         if path.is_file() {
