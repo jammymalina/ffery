@@ -1,15 +1,16 @@
 use anyhow::{Context, anyhow};
 use indicatif::ProgressBar;
 use serde::Serialize;
+use std::cmp::Ordering;
+use std::collections::BTreeSet;
 use std::{
-    cmp::Ordering,
     fs, io,
     path::{Path, PathBuf},
     thread::sleep,
     time::Duration,
 };
 
-use crate::file_utils::{self, file_has_extension};
+use crate::file_utils;
 
 static SUPPORTED_AUDIO_EXTENSIONS: &[&str] = &[
     "flac", // Free Lossless Audio Codec
@@ -17,7 +18,10 @@ static SUPPORTED_AUDIO_EXTENSIONS: &[&str] = &[
 
 #[derive(Serialize)]
 struct SongsAnalysis {
+    artists: Vec<String>,
+    albums: Vec<String>,
     missing_song_info: MissingSongInfo,
+    misc: MiscSongInfo,
     song_metadata: Vec<SongMetadata>,
 }
 
@@ -34,13 +38,47 @@ impl SongsAnalysis {
                 )
             });
 
+        let albums = song_metadata
+            .iter()
+            .filter(|metadata| metadata.album.is_some())
+            .map(|metadata| {
+                let album = metadata.album.clone().unwrap();
+                let artist = metadata
+                    .artist
+                    .clone()
+                    .unwrap_or_else(|| "Unknown artist".to_string());
+                (artist, album)
+            })
+            .collect::<BTreeSet<(String, String)>>()
+            .into_iter()
+            .map(|(artist, album)| format!("{album} ({artist})"))
+            .collect();
+
         Self {
+            artists: song_metadata
+                .iter()
+                .filter_map(|val| val.artist.clone())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
+            albums,
             missing_song_info: MissingSongInfo {
                 artist,
                 title,
                 album,
                 disc_number,
                 track_number,
+            },
+            misc: MiscSongInfo {
+                most_digits_in_track_number: song_metadata
+                    .iter()
+                    .map(|metadata| {
+                        metadata
+                            .track_number
+                            .map_or(0, |val| val.checked_ilog10().unwrap_or(0) + 1)
+                    })
+                    .max()
+                    .unwrap_or(0),
             },
             song_metadata,
         }
@@ -57,7 +95,14 @@ struct MissingSongInfo {
 }
 
 #[derive(Serialize)]
+struct MiscSongInfo {
+    most_digits_in_track_number: u32,
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Serialize, Clone)]
 struct SongMetadata {
+    filepath: PathBuf,
     artist: Option<String>,
     title: Option<String>,
     album: Option<String>,
@@ -66,21 +111,29 @@ struct SongMetadata {
 }
 
 impl SongMetadata {
-    fn from_tag(tag: &metaflac::Tag) -> Self {
+    fn from_file(filepath: PathBuf) -> anyhow::Result<Self> {
+        let tag = metaflac::Tag::read_from_path(&filepath).with_context(|| {
+            anyhow!(
+                "Unable to read '{}' metadata",
+                filepath.to_str().unwrap_or("unknown")
+            )
+        })?;
+
         let get_entry_from_tag = |key: &str| -> Option<String> {
             tag.get_vorbis(key)
                 .and_then(|mut entries| entries.next())
                 .map(str::to_string)
         };
 
-        Self {
+        Ok(Self {
+            filepath,
             artist: get_entry_from_tag("ARTIST"),
             title: get_entry_from_tag("TITLE"),
             album: get_entry_from_tag("ALBUM"),
             disc_number: get_entry_from_tag("DISCNUMBER").and_then(|val| val.parse::<u32>().ok()),
             track_number: get_entry_from_tag("TRACKNUMBER")
                 .and_then(|val| Self::parse_track_number(&val)),
-        }
+        })
     }
 
     fn parse_track_number(val: &str) -> Option<u32> {
@@ -96,13 +149,13 @@ impl SongMetadata {
 
 pub fn start_analyze_music(src: &PathBuf, output: &PathBuf) -> anyhow::Result<()> {
     if src.is_file() {
-        let song_metadata = get_song_metadata(src)?;
+        let song_metadata = SongMetadata::from_file(src.clone())?;
         store_song_metadata(vec![song_metadata], output)?;
         return Ok(());
     }
 
     let file_count = file_utils::count_files_by_extension(src, SUPPORTED_AUDIO_EXTENSIONS)?;
-    let bar = ProgressBar::new(file_count);
+    let bar: ProgressBar = ProgressBar::new(file_count);
 
     let results: Vec<_> = analyze_music(src, &bar)?;
     bar.finish();
@@ -122,7 +175,9 @@ fn analyze_music(dir: &PathBuf, bar: &ProgressBar) -> anyhow::Result<Vec<SongMet
     let mut audio_files: Vec<_> = src_content
         .clone()
         .into_iter()
-        .filter(|entry| entry.is_file() && file_has_extension(entry, SUPPORTED_AUDIO_EXTENSIONS))
+        .filter(|entry| {
+            entry.is_file() && file_utils::file_has_extension(entry, SUPPORTED_AUDIO_EXTENSIONS)
+        })
         .collect();
     let mut dirs: Vec<_> = src_content
         .into_iter()
@@ -132,8 +187,8 @@ fn analyze_music(dir: &PathBuf, bar: &ProgressBar) -> anyhow::Result<Vec<SongMet
 
     audio_files.sort();
 
-    for f in &audio_files {
-        let song_metadata = get_song_metadata(f)?;
+    for f in audio_files {
+        let song_metadata = SongMetadata::from_file(f)?;
         results.push(song_metadata);
         bar.inc(1);
     }
@@ -144,16 +199,6 @@ fn analyze_music(dir: &PathBuf, bar: &ProgressBar) -> anyhow::Result<Vec<SongMet
     }
 
     Ok(results)
-}
-
-fn get_song_metadata(f: &Path) -> anyhow::Result<SongMetadata> {
-    let tag = metaflac::Tag::read_from_path(f).with_context(|| {
-        anyhow!(
-            "Unable to read '{}' metadata",
-            f.to_str().unwrap_or("unknown")
-        )
-    })?;
-    Ok(SongMetadata::from_tag(&tag))
 }
 
 fn store_song_metadata(results: Vec<SongMetadata>, output: &PathBuf) -> anyhow::Result<()> {
