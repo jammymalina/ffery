@@ -10,7 +10,7 @@ Currently, `ffery` supports the following command:
 
 *   **`remove-prefix`**: Bulk renames files in a directory by removing a specified prefix, filtered by extension. Useful for cleaning up downloads or recordings (e.g., removing "AUDIO_").
 *   **`analyze-music`**: Recursively scans a source directory for music files, extracts metadata (tags), and saves the analysis to a specified file (JSON format). Useful for inspecting your library's tags.
-*   **`copy-music`** Recursively copies music files from a source to a destination directory. This command is specifically designed for older/simpler music players (like some car stereos or basic MP3 players) that play files in the order they were written to the filesystem, rather than using tag information or alphabetical order. It sorts files based on metadata (album, disc number, track number) before copying and allows custom filename formatting using tags and mustache template.
+*   **`copy-music`** Recursively copies music files from a source to a destination directory. This command is specifically designed for older/simpler music players (like some car stereos or basic MP3 players) that play files in the order they were written to the filesystem, rather than using tag information or alphabetical order. It sorts files based on metadata (album, disc number, track number) before copying and allows custom filename formatting using tags and a mustache template.
 
 
 ## Installation
@@ -93,12 +93,12 @@ Copies music files from a source to a destination, sorting them by metadata (alb
 - --dest &lt;PATH&gt;: The path to the destination directory where files will be copied. The directory structure from the source is generally preserved.
 - --delay-ms &lt;MILLISECONDS&gt;: (Optional) A small delay introduced between file copy operations. This can sometimes help ensure the filesystem registers the intended write order. Default: 30.
 - --override-files: (Optional) If present, existing files in the destination directory with the same name will be overwritten. Use with caution! Default: Off (files are skipped if they exist).
-- --filename-template &lt;TEMPLATE&gt;: (Optional) A Mustache template string to format the output filenames. Default: "{{#disc_number}}{{disc_number}}-{{/disc_number}}{{track_number}} {{title}}". Extension is automatically added at the end.
+- --filename-template &lt;TEMPLATE&gt;: (Optional) A mustache template string to format the output filenames. Default: "{{#disc_number}}{{disc_number}}-{{/disc_number}}{{track_number}} {{title}}". Extension is automatically added at the end.
 - --pad-width &lt;NUMBER&gt;: (Optional) The width to pad track and disc numbers with leading zeros in the filename template. Default: 2.
 
 **Filename Template (--filename-template):**
 
-This uses Mustache syntax. The default template {{#disc_number}}{{disc_number}}-{{/disc_number}}{{track_number}} {{title}} means:
+This uses mustache syntax. The default template {{#disc_number}}{{disc_number}}-{{/disc_number}}{{track_number}} {{title}} means:
 - If a disc_number tag exists, output <disc_number>-.
 - Output the track_number.
 - Output a space, then the title.
