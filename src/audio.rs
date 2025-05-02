@@ -303,6 +303,7 @@ fn copy_music(
         let mut dest: PathBuf = dest.to_path_buf();
         dest.push(filename);
         dest.set_extension(extension);
+        let dest: PathBuf = file_utils::sanitize_pathbuf_for_fat32(&dest);
 
         file_utils::copy_file(&song.filepath, &dest, override_files)?;
         sleep(Duration::from_millis(delay_ms));
@@ -311,11 +312,12 @@ fn copy_music(
     }
 
     for f in &other_files {
-        let os_filename = src
+        let os_filename: &std::ffi::OsStr = f
             .file_name()
             .ok_or_else(|| anyhow!("Unexpected error - expected filename but none found"))?;
         let mut dest = dest.to_path_buf();
         dest.push(os_filename);
+        let dest: PathBuf = file_utils::sanitize_pathbuf_for_fat32(&dest);
 
         file_utils::copy_file(f, &dest, override_files)?;
 
