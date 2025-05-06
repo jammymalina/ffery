@@ -205,7 +205,7 @@ fn store_song_metadata(results: Vec<SongMetadata>, output: &PathBuf) -> anyhow::
         fs::create_dir_all(parent_dir)?;
     }
 
-    let analysis = SongsAnalysis::from_song_metadata(results);
+    let analysis: SongsAnalysis = SongsAnalysis::from_song_metadata(results);
 
     let json_data = serde_json::to_string(&analysis)?;
     fs::write(output, json_data)?;
@@ -213,30 +213,39 @@ fn store_song_metadata(results: Vec<SongMetadata>, output: &PathBuf) -> anyhow::
     Ok(())
 }
 
+pub struct CopyFileOptions<'a> {
+    pub filename_template: &'a str,
+    pub delay_ms: u64,
+    pub override_files: bool,
+    pub pad_width: usize,
+}
+
+#[derive(clap::ValueEnum, Copy, Clone, PartialEq, Eq)]
+pub enum TrackNumberModification {
+    None,
+    Number,
+    PaddedNumber,
+    IncludeDiscNumber,
+}
+
+pub struct CopyMetadataOptions {
+    pub track_number_modification: TrackNumberModification,
+}
+
 pub fn start_copying_music(
     src: &PathBuf,
     dest: &Path,
-    delay_ms: u64,
-    override_files: bool,
-    filename_template: &str,
-    pad_width: usize,
+    file_options: &CopyFileOptions,
+    metadata_options: &CopyMetadataOptions,
 ) -> anyhow::Result<()> {
     file_utils::validate_dir(src)?;
 
     let file_count = file_utils::count_files(src)?;
     let bar = ProgressBar::new(file_count);
 
-    let template = mustache::compile_str(filename_template)?;
+    let template = mustache::compile_str(file_options.filename_template)?;
 
-    let result = copy_music(
-        src,
-        dest,
-        delay_ms,
-        override_files,
-        &template,
-        pad_width,
-        &bar,
-    );
+    let result = copy_music(src, dest, &template, file_options, metadata_options, &bar);
     bar.finish();
 
     result
@@ -245,10 +254,9 @@ pub fn start_copying_music(
 fn copy_music(
     src: &PathBuf,
     dest: &Path,
-    delay_ms: u64,
-    override_files: bool,
     filename_template: &mustache::Template,
-    pad_width: usize,
+    file_options: &CopyFileOptions,
+    metadata_options: &CopyMetadataOptions,
     bar: &ProgressBar,
 ) -> anyhow::Result<()> {
     file_utils::validate_dir(src)?;
@@ -280,6 +288,8 @@ fn copy_music(
             .then(a.track_number.cmp(&b.track_number))
     });
 
+    let pad_width = file_options.pad_width;
+
     for song in &songs {
         let data = mustache::MapBuilder::new()
             .insert("artist", &song.artist)?
@@ -305,8 +315,9 @@ fn copy_music(
         dest.set_extension(extension);
         let dest: PathBuf = file_utils::sanitize_pathbuf_for_fat32(&dest);
 
-        file_utils::copy_file(&song.filepath, &dest, override_files)?;
-        sleep(Duration::from_millis(delay_ms));
+        file_utils::copy_file(&song.filepath, &dest, file_options.override_files)?;
+        modify_file_metadata(&dest, song, metadata_options)?;
+        sleep(Duration::from_millis(file_options.delay_ms));
 
         bar.inc(1);
     }
@@ -319,7 +330,7 @@ fn copy_music(
         dest.push(os_filename);
         let dest: PathBuf = file_utils::sanitize_pathbuf_for_fat32(&dest);
 
-        file_utils::copy_file(f, &dest, override_files)?;
+        file_utils::copy_file(f, &dest, file_options.override_files)?;
 
         bar.inc(1);
     }
@@ -333,13 +344,50 @@ fn copy_music(
         copy_music(
             d,
             &dest,
-            delay_ms,
-            override_files,
             filename_template,
-            pad_width,
+            file_options,
+            metadata_options,
             bar,
         )?;
     }
+
+    Ok(())
+}
+
+fn modify_file_metadata(
+    dest: &Path,
+    song_metadata: &SongMetadata,
+    metadata_options: &CopyMetadataOptions,
+) -> anyhow::Result<()> {
+    if metadata_options.track_number_modification == TrackNumberModification::None
+        || song_metadata.track_number.is_none()
+    {
+        return Ok(());
+    }
+
+    let mut tag = metaflac::Tag::read_from_path(dest).with_context(|| {
+        anyhow!(
+            "Unable to read '{}' metadata",
+            dest.to_str().unwrap_or("unknown")
+        )
+    })?;
+
+    let track_number = song_metadata.track_number.unwrap();
+
+    let new_disc_number = match metadata_options.track_number_modification {
+        TrackNumberModification::None => None,
+        TrackNumberModification::Number => Some(track_number.to_string()),
+        TrackNumberModification::PaddedNumber => Some(format!("{track_number:0>2}")),
+        TrackNumberModification::IncludeDiscNumber => {
+            let padded_number = format!("{track_number:0>2}");
+            let disc_number = song_metadata.disc_number.unwrap_or(0).to_string();
+            Some(format!("{disc_number}{padded_number}"))
+        }
+    }
+    .unwrap();
+
+    tag.set_vorbis("TRACKNUMBER", vec![new_disc_number]);
+    tag.write_to_path(dest)?;
 
     Ok(())
 }
