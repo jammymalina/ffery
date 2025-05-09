@@ -168,10 +168,21 @@ pub fn file_has_extension(f: &Path, extensions: &[&str]) -> bool {
     })
 }
 
-pub fn copy_file(src: &PathBuf, dest: &PathBuf, override_file: bool) -> anyhow::Result<()> {
+pub fn copy_file(
+    src: &PathBuf,
+    dest: &PathBuf,
+    override_file: bool,
+    fat_32: bool,
+) -> anyhow::Result<()> {
     if dest.exists() && !override_file {
         return Ok(());
     }
+
+    let dest = if fat_32 {
+        &sanitize_pathbuf_for_fat32(dest)
+    } else {
+        dest
+    };
 
     if let Some(parent_dir) = dest.parent() {
         fs::create_dir_all(parent_dir)?;

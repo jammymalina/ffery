@@ -93,12 +93,12 @@ Copies music files from a source to a destination, sorting them by metadata (alb
 - --dest &lt;PATH&gt;: The path to the destination directory where files will be copied. The directory structure from the source is generally preserved.
 - --delay-ms &lt;MILLISECONDS&gt;: (Optional) A small delay introduced between file copy operations. This can sometimes help ensure the filesystem registers the intended write order. Default: 30.
 - --override-files: (Optional) If present, existing files in the destination directory with the same name will be overwritten. Use with caution! Default: Off (files are skipped if they exist).
-- --filename-template &lt;TEMPLATE&gt;: (Optional) A mustache template string to format the output filenames. Default: `{{#disc_number}}{{disc_number}}-{{/disc_number}}{{track_number}} {{title}}`. Extension is automatically added at the end.
+- --filename-template &lt;TEMPLATE&gt;: (Optional) A mustache template string to format the output filenames. Default: `"{{#disc_number}}{{{disc_number}}}-{{/disc_number}}{{{track_number}}} {{{title}}}"`. Extension is automatically added at the end.
 - --pad-width &lt;NUMBER&gt;: (Optional) The width to pad track and disc numbers with leading zeros in the filename template. Default: 2.
 
 **Filename Template (--filename-template):**
 
-This uses mustache syntax. The default template `{{#disc_number}}{{disc_number}}-{{/disc_number}}{{track_number}} {{title}}` means:
+This uses mustache syntax. The default template `"{{#disc_number}}{{{disc_number}}}-{{/disc_number}}{{{track_number}}} {{{title}}}"` means:
 - If a disc_number tag exists, output &lt;disc_number&gt;-.
 - Output the track_number.
 - Output a space, then the title.

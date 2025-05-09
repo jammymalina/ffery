@@ -36,10 +36,12 @@ enum Commands {
         delay_ms: u64,
         #[arg(short = 'o', long, action)]
         override_files: bool,
+        #[arg(long, action)]
+        fat_32: bool,
         #[arg(
             short = 't',
             long,
-            default_value_t = String::from("{{#disc_number}}{{disc_number}}-{{/disc_number}}{{track_number}} {{title}}")
+            default_value_t = String::from("{{#disc_number}}{{{disc_number}}}-{{/disc_number}}{{{track_number}}} {{{title}}}")
         )]
         filename_template: String,
         #[arg(long, default_value_t = 2)]
@@ -65,6 +67,7 @@ fn main() -> anyhow::Result<()> {
             filename_template,
             pad_width,
             metadata_track_number_modification,
+            fat_32,
         } => audio::start_copying_music(
             src,
             dest,
@@ -73,6 +76,7 @@ fn main() -> anyhow::Result<()> {
                 delay_ms: *delay_ms,
                 override_files: *override_files,
                 pad_width: *pad_width,
+                fat_32: *fat_32,
             },
             &audio::CopyMetadataOptions {
                 track_number_modification: *metadata_track_number_modification,

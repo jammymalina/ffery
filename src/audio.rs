@@ -126,7 +126,7 @@ impl SongMetadata {
 
         Ok(Self {
             filepath,
-            artist: get_entry_from_tag("ARTIST"),
+            artist: get_entry_from_tag("ALBUMARTIST"),
             title: get_entry_from_tag("TITLE"),
             album: get_entry_from_tag("ALBUM"),
             disc_number: get_entry_from_tag("DISCNUMBER").and_then(|val| val.parse::<u32>().ok()),
@@ -218,6 +218,7 @@ pub struct CopyFileOptions<'a> {
     pub delay_ms: u64,
     pub override_files: bool,
     pub pad_width: usize,
+    pub fat_32: bool,
 }
 
 #[derive(clap::ValueEnum, Copy, Clone, PartialEq, Eq)]
@@ -313,9 +314,13 @@ fn copy_music(
         let mut dest: PathBuf = dest.to_path_buf();
         dest.push(filename);
         dest.set_extension(extension);
-        let dest: PathBuf = file_utils::sanitize_pathbuf_for_fat32(&dest);
 
-        file_utils::copy_file(&song.filepath, &dest, file_options.override_files)?;
+        file_utils::copy_file(
+            &song.filepath,
+            &dest,
+            file_options.override_files,
+            file_options.fat_32,
+        )?;
         modify_file_metadata(&dest, song, metadata_options)?;
         sleep(Duration::from_millis(file_options.delay_ms));
 
@@ -328,9 +333,8 @@ fn copy_music(
             .ok_or_else(|| anyhow!("Unexpected error - expected filename but none found"))?;
         let mut dest = dest.to_path_buf();
         dest.push(os_filename);
-        let dest: PathBuf = file_utils::sanitize_pathbuf_for_fat32(&dest);
 
-        file_utils::copy_file(f, &dest, file_options.override_files)?;
+        file_utils::copy_file(f, &dest, file_options.override_files, file_options.fat_32)?;
 
         bar.inc(1);
     }
