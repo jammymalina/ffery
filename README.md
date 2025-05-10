@@ -106,7 +106,7 @@ Possible values for `<MODIFICATION_TYPE>`:
 **Filename Template (--filename-template):**
 
 This uses mustache syntax. The default template `"{{#disc_number}}{{{disc_number}}}-{{/disc_number}}{{{track_number}}} {{{title}}}"` means:
-- If a disc_number tag exists, output &lt;disc_number&gt;-.
+- If a disc_number tag exists, output `<disc_number>`.
 - Output the track_number.
 - Output a space, then the title.
 - Track and disc numbers are padded according to --pad-width.
