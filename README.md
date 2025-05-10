@@ -96,7 +96,7 @@ Copies music files from a source to a destination, sorting them by metadata (alb
 - `--fat-32`: (Optional) If present, sanitizes filenames to be compatible with FAT32 filesystems (e.g., removes or replaces characters like *, ?, :, etc., and ensures length limits). Default: Off.
 - `--filename-template <TEMPLATE> (-t)`: (Optional) A mustache template string to format the output filenames. Default: `"{{#disc_number}}{{{disc_number}}}-{{/disc_number}}{{{track_number}}} {{{title}}}"`. Extension is automatically added at the end.
 - `--pad-width <NUMBER>`: (Optional) The width to pad track and disc numbers with leading zeros in the filename template. Default: 2.
-`--metadata-track-number-modification <MODIFICATION_TYPE> (-m)`: (Optional) Modifies the track number of the copied file. Useful if some DAPs cannot handle more complex track numbers (e.g. 3/11) or if they do not take disc number into consideration during sorting. Default: none.
+- `--metadata-track-number-modification <MODIFICATION_TYPE> (-m)`: (Optional) Modifies the track number of the copied file. Useful if some DAPs cannot handle more complex track numbers (e.g. 3/11) or if they do not take disc number into consideration during sorting. Default: none.
 Possible values for `<MODIFICATION_TYPE>`:
     - `none`: No modification to the track number tag. The raw tag value is used.
     - `number`: Extracts only the numerical part of the track number tag (e.g., "1" from "01/12"). If there are padded zeros it removes them.
