@@ -207,7 +207,7 @@ pub fn remove_prefix_from_files(prefix: &str, ext: &str, dir: &Path) -> anyhow::
     let collected_results: Result<Vec<_>, _> = fs::read_dir(dir)?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .filter(|path: &PathBuf| path.is_file())
+        .filter(|path| path.is_file())
         .filter(|path| path.extension() == Some(target_ext))
         .filter_map(|path| {
             path.file_name()
