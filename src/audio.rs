@@ -110,8 +110,8 @@ struct SongMetadata {
 }
 
 impl SongMetadata {
-    fn from_file(filepath: PathBuf) -> anyhow::Result<Self> {
-        let tag = metaflac::Tag::read_from_path(&filepath).with_context(|| {
+    fn from_file(filepath: &Path) -> anyhow::Result<Self> {
+        let tag = metaflac::Tag::read_from_path(filepath).with_context(|| {
             anyhow!(
                 "Unable to read '{}' metadata",
                 filepath.to_str().unwrap_or("unknown")
@@ -125,7 +125,7 @@ impl SongMetadata {
         };
 
         Ok(Self {
-            filepath,
+            filepath: filepath.to_path_buf(),
             artist: get_entry_from_tag("ALBUMARTIST"),
             title: get_entry_from_tag("TITLE"),
             album: get_entry_from_tag("ALBUM"),
@@ -146,9 +146,9 @@ impl SongMetadata {
     }
 }
 
-pub fn start_analyze_music(src: &PathBuf, output: &PathBuf) -> anyhow::Result<()> {
+pub fn start_analyze_music(src: &Path, output: &Path) -> anyhow::Result<()> {
     if src.is_file() {
-        let song_metadata = SongMetadata::from_file(src.clone())?;
+        let song_metadata = SongMetadata::from_file(src)?;
         store_song_metadata(vec![song_metadata], output)?;
         return Ok(());
     }
@@ -163,7 +163,7 @@ pub fn start_analyze_music(src: &PathBuf, output: &PathBuf) -> anyhow::Result<()
     Ok(())
 }
 
-fn analyze_music(dir: &PathBuf, bar: &ProgressBar) -> anyhow::Result<Vec<SongMetadata>> {
+fn analyze_music(dir: &Path, bar: &ProgressBar) -> anyhow::Result<Vec<SongMetadata>> {
     file_utils::validate_dir(dir)?;
 
     let mut results = vec![];
@@ -187,7 +187,7 @@ fn analyze_music(dir: &PathBuf, bar: &ProgressBar) -> anyhow::Result<Vec<SongMet
     audio_files.sort();
 
     for f in audio_files {
-        let song_metadata = SongMetadata::from_file(f)?;
+        let song_metadata = SongMetadata::from_file(&f)?;
         results.push(song_metadata);
         bar.inc(1);
     }
@@ -200,7 +200,7 @@ fn analyze_music(dir: &PathBuf, bar: &ProgressBar) -> anyhow::Result<Vec<SongMet
     Ok(results)
 }
 
-fn store_song_metadata(results: Vec<SongMetadata>, output: &PathBuf) -> anyhow::Result<()> {
+fn store_song_metadata(results: Vec<SongMetadata>, output: &Path) -> anyhow::Result<()> {
     if let Some(parent_dir) = output.parent() {
         fs::create_dir_all(parent_dir)?;
     }
@@ -234,7 +234,7 @@ pub struct CopyMetadataOptions {
 }
 
 pub fn start_copying_music(
-    src: &PathBuf,
+    src: &Path,
     dest: &Path,
     file_options: &CopyFileOptions,
     metadata_options: &CopyMetadataOptions,
@@ -253,7 +253,7 @@ pub fn start_copying_music(
 }
 
 fn copy_music(
-    src: &PathBuf,
+    src: &Path,
     dest: &Path,
     filename_template: &mustache::Template,
     file_options: &CopyFileOptions,
@@ -280,7 +280,7 @@ fn copy_music(
 
     let mut songs = audio_files
         .into_iter()
-        .map(SongMetadata::from_file)
+        .map(|path| SongMetadata::from_file(&path))
         .collect::<anyhow::Result<Vec<_>>>()?;
 
     songs.sort_by(|a, b| {
@@ -315,14 +315,16 @@ fn copy_music(
         dest.push(filename);
         dest.set_extension(extension);
 
-        file_utils::copy_file(
+        let dest = file_utils::copy_file(
             &song.filepath,
             &dest,
             file_options.override_files,
             file_options.fat_32,
         )?;
-        modify_file_metadata(&dest, song, metadata_options)?;
-        sleep(Duration::from_millis(file_options.delay_ms));
+        if let Some(dest) = dest {
+            modify_file_metadata(&dest, song, metadata_options)?;
+            sleep(Duration::from_millis(file_options.delay_ms));
+        }
 
         bar.inc(1);
     }

@@ -151,11 +151,11 @@ pub fn validate_dir(dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn count_files(dir: &PathBuf) -> anyhow::Result<u64> {
+pub fn count_files(dir: &Path) -> anyhow::Result<u64> {
     count_files_recursive(dir, None)
 }
 
-pub fn count_files_by_extension(dir: &PathBuf, extensions: &[&str]) -> anyhow::Result<u64> {
+pub fn count_files_by_extension(dir: &Path, extensions: &[&str]) -> anyhow::Result<u64> {
     count_files_recursive(dir, Some(extensions))
 }
 
@@ -169,26 +169,26 @@ pub fn file_has_extension(f: &Path, extensions: &[&str]) -> bool {
 }
 
 pub fn copy_file(
-    src: &PathBuf,
-    dest: &PathBuf,
+    src: &Path,
+    dest: &Path,
     override_file: bool,
     fat_32: bool,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<PathBuf>> {
     if dest.exists() && !override_file {
-        return Ok(());
+        return Ok(None);
     }
 
     let dest = if fat_32 {
-        &sanitize_pathbuf_for_fat32(dest)
+        sanitize_pathbuf_for_fat32(dest)
     } else {
-        dest
+        dest.to_path_buf()
     };
 
     if let Some(parent_dir) = dest.parent() {
         fs::create_dir_all(parent_dir)?;
     }
 
-    fs::copy(src, dest).with_context(|| {
+    fs::copy(src, &dest).with_context(|| {
         format!(
             "Failed to copy file '{}' to '{}'",
             src.to_str().unwrap_or("unknown"),
@@ -196,10 +196,10 @@ pub fn copy_file(
         )
     })?;
 
-    Ok(())
+    Ok(Some(dest))
 }
 
-pub fn remove_prefix_from_files(prefix: &str, ext: &str, dir: &PathBuf) -> anyhow::Result<()> {
+pub fn remove_prefix_from_files(prefix: &str, ext: &str, dir: &Path) -> anyhow::Result<()> {
     validate_dir(dir)?;
 
     let target_ext = OsStr::new(ext);
@@ -235,7 +235,7 @@ pub fn remove_prefix_from_files(prefix: &str, ext: &str, dir: &PathBuf) -> anyho
     collected_results.map(|_| ())
 }
 
-fn count_files_recursive(dir: &PathBuf, extensions: Option<&[&str]>) -> anyhow::Result<u64> {
+fn count_files_recursive(dir: &Path, extensions: Option<&[&str]>) -> anyhow::Result<u64> {
     let mut count = 0;
 
     validate_dir(dir)?;
