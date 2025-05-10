@@ -99,7 +99,7 @@ Copies music files from a source to a destination, sorting them by metadata (alb
 - `--metadata-track-number-modification <MODIFICATION_TYPE> (-m)`: (Optional) Modifies the track number of the copied file. Useful if some DAPs cannot handle more complex track numbers (e.g. 3/11) or if they do not take disc number into consideration during sorting. Default: none.
 Possible values for `<MODIFICATION_TYPE>`:
     - `none`: No modification to the track number tag. The raw tag value is used.
-    - `number`: Extracts only the numerical part of the track number tag (e.g., "1" from "01/12"). If there are padded zeros it removes them.
+    - `number`: Extracts only the numerical part of the track number tag (e.g., "1" from "01/12"). If there are padding zeros it removes them.
     - `padded-number`: Same as number, but also pads the extracted number with max 1 leading zero (e.g. "03" from "3").
     - `include-disc-number`: It prepends the disc number to the track number (e.g., track "5" on disc "1" becomes "105"; track "12" on disc "2" becomes "212"). The track number is padded with max 1 leading zero. If the disc number does not exist, it will use disc number "0" as default.
 
