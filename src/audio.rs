@@ -1,8 +1,8 @@
 use anyhow::{Context, anyhow};
 use indicatif::ProgressBar;
 use serde::Serialize;
-use std::collections::{BTreeSet, HashMap};
 use std::{
+    collections::{BTreeSet, HashMap},
     fs, io,
     path::{Path, PathBuf},
     thread::sleep,
@@ -180,27 +180,9 @@ pub fn start_analyze_music(src: &Path, output: &Path) -> anyhow::Result<()> {
 }
 
 fn analyze_music(dir: &Path, bar: &ProgressBar) -> anyhow::Result<Vec<SongMetadata>> {
-    file_utils::validate_dir(dir)?;
-
     let mut results = vec![];
 
-    let src_content: Vec<_> = fs::read_dir(dir)?
-        .map(|entry_result| entry_result.map(|entry| entry.path()))
-        .collect::<Result<Vec<PathBuf>, io::Error>>()?;
-    let mut audio_files: Vec<_> = src_content
-        .clone()
-        .into_iter()
-        .filter(|entry| {
-            entry.is_file() && file_utils::file_has_extension(entry, SUPPORTED_AUDIO_EXTENSIONS)
-        })
-        .collect();
-    let mut dirs: Vec<_> = src_content
-        .into_iter()
-        .filter(|entry| entry.is_dir())
-        .collect();
-    dirs.sort();
-
-    audio_files.sort();
+    let (audio_files, dirs) = file_utils::walk_directory(dir, SUPPORTED_AUDIO_EXTENSIONS)?;
 
     for f in audio_files {
         let song_metadata = SongMetadata::from_file(&f)?;
@@ -241,27 +223,9 @@ pub fn start_get_all_metadata(src: &Path, output: &Path) -> anyhow::Result<()> {
 }
 
 fn get_all_metadata(dir: &Path, bar: &ProgressBar) -> anyhow::Result<Vec<AllSongMetadata>> {
-    file_utils::validate_dir(dir)?;
-
     let mut results = vec![];
 
-    let src_content: Vec<_> = fs::read_dir(dir)?
-        .map(|entry_result| entry_result.map(|entry| entry.path()))
-        .collect::<Result<Vec<PathBuf>, io::Error>>()?;
-    let mut audio_files: Vec<_> = src_content
-        .clone()
-        .into_iter()
-        .filter(|entry| {
-            entry.is_file() && file_utils::file_has_extension(entry, SUPPORTED_AUDIO_EXTENSIONS)
-        })
-        .collect();
-    let mut dirs: Vec<_> = src_content
-        .into_iter()
-        .filter(|entry| entry.is_dir())
-        .collect();
-    dirs.sort();
-
-    audio_files.sort();
+    let (audio_files, dirs) = file_utils::walk_directory(dir, SUPPORTED_AUDIO_EXTENSIONS)?;
 
     for f in audio_files {
         let song_metadata = get_all_song_metadata_from_file(&f)?;

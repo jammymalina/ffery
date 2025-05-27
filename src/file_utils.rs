@@ -1,8 +1,10 @@
 use anyhow::{Context, anyhow};
 use phf::phf_set;
-use std::ffi::OsStr;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsStr,
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 static FORBIDDEN_CHARS: phf::Set<char> = phf_set! {
     // Explicitly forbidden printable ASCII
@@ -267,4 +269,29 @@ pub fn store_data(output: &Path, data: &str) -> anyhow::Result<()> {
     fs::write(output, data)?;
 
     Ok(())
+}
+
+pub fn walk_directory(
+    dir: &Path,
+    extensions: &[&str],
+) -> anyhow::Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+    validate_dir(dir)?;
+
+    let src_content: Vec<_> = fs::read_dir(dir)?
+        .map(|entry_result| entry_result.map(|entry| entry.path()))
+        .collect::<Result<Vec<PathBuf>, io::Error>>()?;
+    let mut files: Vec<_> = src_content
+        .clone()
+        .into_iter()
+        .filter(|entry| entry.is_file() && file_has_extension(entry, extensions))
+        .collect();
+    let mut dirs: Vec<_> = src_content
+        .into_iter()
+        .filter(|entry| entry.is_dir())
+        .collect();
+    dirs.sort();
+
+    files.sort();
+
+    Ok((files, dirs))
 }
