@@ -73,7 +73,7 @@ fn main() -> anyhow::Result<()> {
             pad_width,
             metadata_track_number_modification,
             fat_32,
-        } => audio::start_copying_music(
+        } => audio::start_copy_music(
             src,
             dest,
             &audio::CopyFileOptions {

@@ -267,7 +267,7 @@ pub struct CopyMetadataOptions {
     pub track_number_modification: TrackNumberModification,
 }
 
-pub fn start_copying_music(
+pub fn start_copy_music(
     src: &Path,
     dest: &Path,
     file_options: &CopyFileOptions,
