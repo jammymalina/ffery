@@ -1,4 +1,3 @@
-use audio::start_analyze_music;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -23,6 +22,11 @@ enum Commands {
         dir: PathBuf,
     },
     AnalyzeMusic {
+        #[arg(short = 'r', long)]
+        result: PathBuf,
+        src: PathBuf,
+    },
+    GetAllMetadata {
         #[arg(short = 'r', long)]
         result: PathBuf,
         src: PathBuf,
@@ -58,7 +62,8 @@ fn main() -> anyhow::Result<()> {
         Commands::RemovePrefix { prefix, ext, dir } => {
             file_utils::remove_prefix_from_files(prefix, ext, dir)
         }
-        Commands::AnalyzeMusic { result, src } => start_analyze_music(src, result),
+        Commands::AnalyzeMusic { result, src } => audio::start_analyze_music(src, result),
+        Commands::GetAllMetadata { result, src } => audio::start_get_all_metadata(src, result),
         Commands::CopyMusic {
             src,
             dest,

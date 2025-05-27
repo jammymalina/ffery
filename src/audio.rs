@@ -1,7 +1,7 @@
 use anyhow::{Context, anyhow};
 use indicatif::ProgressBar;
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -146,6 +146,22 @@ impl SongMetadata {
     }
 }
 
+type AllSongMetadata = HashMap<String, Vec<String>>;
+
+fn get_all_song_metadata_from_file(filepath: &Path) -> anyhow::Result<AllSongMetadata> {
+    let tag = metaflac::Tag::read_from_path(filepath).with_context(|| {
+        anyhow!(
+            "Unable to read '{}' metadata",
+            filepath.to_str().unwrap_or("unknown")
+        )
+    })?;
+
+    Ok(tag
+        .vorbis_comments()
+        .map(|c| c.comments.clone())
+        .unwrap_or_default())
+}
+
 pub fn start_analyze_music(src: &Path, output: &Path) -> anyhow::Result<()> {
     if src.is_file() {
         let song_metadata = SongMetadata::from_file(src)?;
@@ -201,16 +217,70 @@ fn analyze_music(dir: &Path, bar: &ProgressBar) -> anyhow::Result<Vec<SongMetada
 }
 
 fn store_song_metadata(results: Vec<SongMetadata>, output: &Path) -> anyhow::Result<()> {
-    if let Some(parent_dir) = output.parent() {
-        fs::create_dir_all(parent_dir)?;
+    let analysis: SongsAnalysis = SongsAnalysis::from_song_metadata(results);
+    let json_data = serde_json::to_string(&analysis)?;
+
+    file_utils::store_data(output, &json_data)
+}
+
+pub fn start_get_all_metadata(src: &Path, output: &Path) -> anyhow::Result<()> {
+    if src.is_file() {
+        let song_metadata: HashMap<String, Vec<String>> = get_all_song_metadata_from_file(src)?;
+        store_all_song_metadata(&[song_metadata], output)?;
+        return Ok(());
     }
 
-    let analysis: SongsAnalysis = SongsAnalysis::from_song_metadata(results);
+    let file_count = file_utils::count_files_by_extension(src, SUPPORTED_AUDIO_EXTENSIONS)?;
+    let bar: ProgressBar = ProgressBar::new(file_count);
 
-    let json_data = serde_json::to_string(&analysis)?;
-    fs::write(output, json_data)?;
+    let results: Vec<_> = get_all_metadata(src, &bar)?;
+    bar.finish();
+    store_all_song_metadata(&results, output)?;
 
     Ok(())
+}
+
+fn get_all_metadata(dir: &Path, bar: &ProgressBar) -> anyhow::Result<Vec<AllSongMetadata>> {
+    file_utils::validate_dir(dir)?;
+
+    let mut results = vec![];
+
+    let src_content: Vec<_> = fs::read_dir(dir)?
+        .map(|entry_result| entry_result.map(|entry| entry.path()))
+        .collect::<Result<Vec<PathBuf>, io::Error>>()?;
+    let mut audio_files: Vec<_> = src_content
+        .clone()
+        .into_iter()
+        .filter(|entry| {
+            entry.is_file() && file_utils::file_has_extension(entry, SUPPORTED_AUDIO_EXTENSIONS)
+        })
+        .collect();
+    let mut dirs: Vec<_> = src_content
+        .into_iter()
+        .filter(|entry| entry.is_dir())
+        .collect();
+    dirs.sort();
+
+    audio_files.sort();
+
+    for f in audio_files {
+        let song_metadata = get_all_song_metadata_from_file(&f)?;
+        results.push(song_metadata);
+        bar.inc(1);
+    }
+
+    for d in &dirs {
+        let dir_results = get_all_metadata(d, bar)?;
+        results.extend(dir_results);
+    }
+
+    Ok(results)
+}
+
+fn store_all_song_metadata(results: &[AllSongMetadata], output: &Path) -> anyhow::Result<()> {
+    let json_data = serde_json::to_string(&results)?;
+
+    file_utils::store_data(output, &json_data)
 }
 
 pub struct CopyFileOptions<'a> {

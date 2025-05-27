@@ -143,3 +143,9 @@ ffery copy-music \
 # Example output filename: Some Artist - Great Album - 005 Song Title.flac
 ```
 
+*Example 3: Copy music to a FAT32 SD card*
+```bash
+ffery copy-music --src '/home/$USER/Music/Artists/' --dest '/run/media/$USER/disk/Artists/' -m include-disc-number --fat-32 -o
+```
+
+

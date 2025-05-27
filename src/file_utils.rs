@@ -258,3 +258,13 @@ fn count_files_recursive(dir: &Path, extensions: Option<&[&str]>) -> anyhow::Res
 
     Ok(count)
 }
+
+pub fn store_data(output: &Path, data: &str) -> anyhow::Result<()> {
+    if let Some(parent_dir) = output.parent() {
+        fs::create_dir_all(parent_dir)?;
+    }
+
+    fs::write(output, data)?;
+
+    Ok(())
+}
