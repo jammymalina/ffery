@@ -1,10 +1,14 @@
 use anyhow::{Context, anyhow};
 use phf::phf_set;
+use rand::Rng;
 use std::{
+    env,
     ffi::OsStr,
     fs, io,
     path::{Path, PathBuf},
 };
+
+use crate::progress;
 
 static FORBIDDEN_CHARS: phf::Set<char> = phf_set! {
     // Explicitly forbidden printable ASCII
@@ -153,6 +157,34 @@ pub fn validate_dir(dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn validate_file(f: &Path) -> anyhow::Result<()> {
+    let f_str = f.to_str().unwrap_or("unknown");
+    if !f.exists() {
+        return Err(anyhow!("Path '{f_str}' does not exist"));
+    }
+
+    if !f.is_file() {
+        return Err(anyhow!("Path '{f_str}' must be a file"));
+    }
+
+    Ok(())
+}
+
+pub fn create_temp_dir() -> anyhow::Result<PathBuf> {
+    let temp_dir = env::temp_dir();
+
+    let unique_name: String = rand::rng()
+        .sample_iter(rand::distr::Alphanumeric)
+        .take(12)
+        .map(char::from)
+        .collect();
+
+    let temp_path = temp_dir.join(unique_name);
+    fs::create_dir_all(&temp_path)?;
+
+    Ok(temp_path)
+}
+
 pub fn count_files(dir: &Path) -> anyhow::Result<u64> {
     count_files_recursive(dir, None)
 }
@@ -237,6 +269,51 @@ pub fn remove_prefix_from_files(prefix: &str, ext: &str, dir: &Path) -> anyhow::
     collected_results.map(|_| ())
 }
 
+pub fn unzip_file(src: &Path, dest: &Path) -> anyhow::Result<()> {
+    let file = fs::File::open(src)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+
+    let bar = progress::get_progress_bar(archive.len() as u64);
+    bar.set_message("Unzipping files...");
+
+    for i in 0..archive.len() {
+        let dest = PathBuf::from(dest);
+
+        let mut file = archive.by_index(i)?;
+        let output_path = match file.enclosed_name() {
+            Some(path) => dest.join(path),
+            None => continue,
+        };
+
+        if file.is_dir() {
+            fs::create_dir_all(&output_path).unwrap();
+        } else {
+            if let Some(p) = output_path.parent()
+                && !p.exists()
+            {
+                fs::create_dir_all(p).unwrap();
+            }
+            let mut output_file = fs::File::create(&output_path).unwrap();
+            io::copy(&mut file, &mut output_file).unwrap();
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            if let Some(mode) = file.unix_mode() {
+                fs::set_permissions(&output_path, fs::Permissions::from_mode(mode)).unwrap();
+            }
+        }
+
+        bar.inc(1);
+    }
+
+    bar.finish();
+
+    Ok(())
+}
+
 fn count_files_recursive(dir: &Path, extensions: Option<&[&str]>) -> anyhow::Result<u64> {
     let mut count = 0;
 
@@ -247,10 +324,10 @@ fn count_files_recursive(dir: &Path, extensions: Option<&[&str]>) -> anyhow::Res
         let path = entry.path();
 
         if path.is_file() {
-            if let Some(extensions) = extensions {
-                if !file_has_extension(&path, extensions) {
-                    continue;
-                }
+            if let Some(extensions) = extensions
+                && !file_has_extension(&path, extensions)
+            {
+                continue;
             }
             count += 1;
         } else if path.is_dir() {

@@ -148,4 +148,10 @@ ffery copy-music \
 ffery copy-music --src '/home/$USER/Music/Artists/' --dest '/run/media/$USER/disk/Artists/' -m include-disc-number --fat-32 -o
 ```
 
+### unzip-music
 
+TBD
+
+```bash
+ffery unzip-music --dir-template '{{album}}'  --dest '.' album.zip
+```

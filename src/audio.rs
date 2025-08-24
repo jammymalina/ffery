@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use crate::file_utils;
+use crate::{file_utils, progress};
 
 static SUPPORTED_AUDIO_EXTENSIONS: &[&str] = &[
     "flac", // Free Lossless Audio Codec
@@ -170,7 +170,7 @@ pub fn start_analyze_music(src: &Path, output: &Path) -> anyhow::Result<()> {
     }
 
     let file_count = file_utils::count_files_by_extension(src, SUPPORTED_AUDIO_EXTENSIONS)?;
-    let bar: ProgressBar = ProgressBar::new(file_count);
+    let bar = progress::get_progress_bar(file_count);
 
     let results: Vec<_> = analyze_music(src, &bar)?;
     bar.finish();
@@ -212,8 +212,8 @@ pub fn start_get_all_metadata(src: &Path, output: &Path) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let file_count = file_utils::count_files_by_extension(src, SUPPORTED_AUDIO_EXTENSIONS)?;
-    let bar: ProgressBar = ProgressBar::new(file_count);
+    let file_count: u64 = file_utils::count_files_by_extension(src, SUPPORTED_AUDIO_EXTENSIONS)?;
+    let bar = progress::get_progress_bar(file_count);
 
     let results: Vec<_> = get_all_metadata(src, &bar)?;
     bar.finish();
@@ -247,12 +247,46 @@ fn store_all_song_metadata(results: &[AllSongMetadata], output: &Path) -> anyhow
     file_utils::store_data(output, &json_data)
 }
 
-pub struct CopyFileOptions<'a> {
+pub struct StartCopyFileOptions<'a> {
     pub filename_template: &'a str,
+    pub dir_template: &'a str,
     pub delay_ms: u64,
     pub override_files: bool,
     pub pad_width: usize,
     pub fat_32: bool,
+}
+
+struct CopyFileOptions {
+    filename_template: mustache::Template,
+    dir_template: mustache::Template,
+    delay_ms: u64,
+    override_files: bool,
+    pad_width: usize,
+    fat_32: bool,
+}
+
+impl<'a> From<&StartCopyFileOptions<'a>> for CopyFileOptions {
+    fn from(options: &StartCopyFileOptions<'a>) -> Self {
+        let filename_template = mustache::compile_str(options.filename_template)
+            .expect("Failed to compile filename template");
+        let dir_template = mustache::compile_str(options.dir_template)
+            .expect("Failed to compile directory template");
+
+        Self {
+            filename_template,
+            dir_template,
+            delay_ms: options.delay_ms,
+            override_files: options.override_files,
+            pad_width: options.pad_width,
+            fat_32: options.fat_32,
+        }
+    }
+}
+
+impl<'a> From<StartCopyFileOptions<'a>> for CopyFileOptions {
+    fn from(options: StartCopyFileOptions<'a>) -> Self {
+        Self::from(&options)
+    }
 }
 
 #[derive(clap::ValueEnum, Copy, Clone, PartialEq, Eq)]
@@ -270,30 +304,43 @@ pub struct CopyMetadataOptions {
 pub fn start_copy_music(
     src: &Path,
     dest: &Path,
-    file_options: &CopyFileOptions,
+    file_options: &StartCopyFileOptions,
     metadata_options: &CopyMetadataOptions,
 ) -> anyhow::Result<()> {
     file_utils::validate_dir(src)?;
 
     let file_count = file_utils::count_files(src)?;
-    let bar = ProgressBar::new(file_count);
+    let bar = progress::get_progress_bar(file_count);
+    bar.set_message("Copying files...");
 
-    let template = mustache::compile_str(file_options.filename_template)?;
+    let curr_path = Path::new("");
+    let mut curr_src_dir = PathBuf::from(curr_path);
 
-    let result = copy_music(src, dest, &template, file_options, metadata_options, &bar);
+    let file_options = CopyFileOptions::from(file_options);
+
+    let result = copy_music(
+        (src, dest),
+        &mut curr_src_dir,
+        curr_path,
+        &file_options,
+        metadata_options,
+        &bar,
+    );
     bar.finish();
 
     result
 }
 
 fn copy_music(
-    src: &Path,
-    dest: &Path,
-    filename_template: &mustache::Template,
+    from_to: (&Path, &Path),
+    curr_src_dir: &mut PathBuf,
+    curr_template_dir: &Path,
     file_options: &CopyFileOptions,
     metadata_options: &CopyMetadataOptions,
     bar: &ProgressBar,
 ) -> anyhow::Result<()> {
+    let (src, dest) = from_to;
+
     file_utils::validate_dir(src)?;
 
     let src_content: Vec<_> = fs::read_dir(src)?
@@ -325,8 +372,11 @@ fn copy_music(
 
     let pad_width = file_options.pad_width;
 
+    let mut template_dir = None;
+
     for song in &songs {
         let data = mustache::MapBuilder::new()
+            .insert("src_dir", &curr_src_dir.to_str())?
             .insert("artist", &song.artist)?
             .insert("title", &song.title)?
             .insert("album", &song.album)?
@@ -339,13 +389,20 @@ fn copy_music(
                 &song.track_number.map(|val| format!("{val:0>pad_width$}")),
             )?
             .build();
-        let filename = filename_template.render_data_to_string(&data)?;
+        let filename = file_options
+            .filename_template
+            .render_data_to_string(&data)?;
+        let dir = file_options.dir_template.render_data_to_string(&data)?;
+        if template_dir.is_none() {
+            template_dir = Some(dir.clone());
+        }
 
         let extension = song
             .filepath
             .extension()
             .ok_or_else(|| anyhow!("Unexpected error - no extension found"))?;
         let mut dest: PathBuf = dest.to_path_buf();
+        dest.push(dir);
         dest.push(filename);
         dest.set_extension(extension);
 
@@ -363,11 +420,16 @@ fn copy_music(
         bar.inc(1);
     }
 
+    let template_dir = template_dir
+        .as_deref()
+        .map_or(curr_template_dir, |d| Path::new(d));
+
     for f in &other_files {
         let os_filename: &std::ffi::OsStr = f
             .file_name()
             .ok_or_else(|| anyhow!("Unexpected error - expected filename but none found"))?;
         let mut dest = dest.to_path_buf();
+        dest.push(template_dir);
         dest.push(os_filename);
 
         file_utils::copy_file(f, &dest, file_options.override_files, file_options.fat_32)?;
@@ -379,12 +441,13 @@ fn copy_music(
         let last_dir = d.file_name().ok_or_else(|| {
             anyhow!("Unexpected error - expected parent directory but none found")
         })?;
-        let mut dest = dest.to_path_buf();
-        dest.push(last_dir);
+        curr_src_dir.push(last_dir);
+        let template_dir = template_dir.join(last_dir);
+
         copy_music(
-            d,
-            &dest,
-            filename_template,
+            (d, dest),
+            curr_src_dir,
+            &template_dir,
             file_options,
             metadata_options,
             bar,
@@ -428,6 +491,22 @@ fn modify_file_metadata(
 
     tag.set_vorbis("TRACKNUMBER", vec![new_disc_number]);
     tag.write_to_path(dest)?;
+
+    Ok(())
+}
+
+pub fn start_unzip_music(
+    src: &Path,
+    dest: &Path,
+    file_options: &StartCopyFileOptions,
+    metadata_options: &CopyMetadataOptions,
+) -> anyhow::Result<()> {
+    file_utils::validate_file(src)?;
+
+    let temp_dir = file_utils::create_temp_dir()?;
+    file_utils::unzip_file(src, &temp_dir)?;
+    start_copy_music(&temp_dir, dest, file_options, metadata_options)?;
+    fs::remove_dir_all(temp_dir)?;
 
     Ok(())
 }
