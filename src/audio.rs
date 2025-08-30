@@ -314,13 +314,11 @@ pub fn start_copy_music(
     bar.set_message("Copying files...");
 
     let curr_path = Path::new("");
-    let mut curr_src_dir = PathBuf::from(curr_path);
-
     let file_options = CopyFileOptions::from(file_options);
 
     let result = copy_music(
         (src, dest),
-        &mut curr_src_dir,
+        curr_path,
         curr_path,
         &file_options,
         metadata_options,
@@ -333,7 +331,7 @@ pub fn start_copy_music(
 
 fn copy_music(
     from_to: (&Path, &Path),
-    curr_src_dir: &mut PathBuf,
+    curr_src_dir: &Path,
     curr_template_dir: &Path,
     file_options: &CopyFileOptions,
     metadata_options: &CopyMetadataOptions,
@@ -441,12 +439,13 @@ fn copy_music(
         let last_dir = d.file_name().ok_or_else(|| {
             anyhow!("Unexpected error - expected parent directory but none found")
         })?;
-        curr_src_dir.push(last_dir);
+        let mut next_src_dir = curr_src_dir.to_path_buf();
+        next_src_dir.push(last_dir);
         let template_dir = template_dir.join(last_dir);
 
         copy_music(
             (d, dest),
-            curr_src_dir,
+            &next_src_dir,
             &template_dir,
             file_options,
             metadata_options,
