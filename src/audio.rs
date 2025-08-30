@@ -15,6 +15,8 @@ static SUPPORTED_AUDIO_EXTENSIONS: &[&str] = &[
     "flac", // Free Lossless Audio Codec
 ];
 
+static OTHER_METADATA_TRACK_NUMBER_KEY_NAMES: &[&str] = &["TRACK"];
+
 #[derive(Serialize)]
 struct SongsAnalysis {
     artists: Vec<String>,
@@ -488,7 +490,12 @@ fn modify_file_metadata(
     }
     .unwrap();
 
-    tag.set_vorbis("TRACKNUMBER", vec![new_disc_number]);
+    tag.set_vorbis("TRACKNUMBER", vec![&new_disc_number]);
+    for &track_field_name in OTHER_METADATA_TRACK_NUMBER_KEY_NAMES {
+        if tag.get_vorbis(track_field_name).is_some() {
+            tag.set_vorbis(track_field_name, vec![&new_disc_number]);
+        }
+    }
     tag.write_to_path(dest)?;
 
     Ok(())
