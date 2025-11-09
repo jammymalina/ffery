@@ -4,14 +4,17 @@
 
 ⚠️ **Warning:** This tool modifies files directly on your filesystem based on the commands given. Operations might be irreversible. **Always back up your data before using `ffery` or test it in a safe, non-critical directory first.**
 
+** Currently only flac files are supported with most of the commands.**
+
 ## Features
 
-Currently, `ffery` supports the following command:
+Currently, `ffery` supports the following commands:
 
 *   **`remove-prefix`**: Bulk renames files in a directory by removing a specified prefix, filtered by extension. Useful for cleaning up downloads or recordings (e.g., removing "AUDIO_").
 *   **`analyze-music`**: Recursively scans a source directory for music files, extracts metadata (tags), and saves the analysis to a specified file (JSON format). Useful for inspecting your library's tags.
-*   **`copy-music`** Recursively copies music files from a source to a destination directory. This command is specifically designed for older/simpler music players (like some car stereos or basic MP3 players) that play files in the order they were written to the filesystem, rather than using tag information or alphabetical order. It sorts files based on metadata (album, disc number, track number) before copying. It allows custom filename formatting using tags and a mustache template, can sanitize filenames for FAT32 compatibility, and offers options to modify track number metadata of the copied file.
-
+*   **`get-all-metadata`**: Recursively scans a source directory for music files and extracts all metadata tags into a single JSON file.
+*   **`copy-music`**: Recursively copies music files from a source to a destination directory. This command is specifically designed for older/simpler music players (like some car stereos or basic MP3 players) that play files in the order they were written to the filesystem, rather than using tag information or alphabetical order. It sorts files based on metadata (album, disc number, track number) before copying. It allows custom filename and directory formatting using tags and a mustache template, can sanitize filenames for FAT32 compatibility, and offers options to modify track number metadata of the copied file.
+*   **`unzip-music`**: Unzips a music archive and copies the contained audio files to a destination. It shares the same powerful sorting, templating, and metadata modification features as `copy-music`.
 
 ## Installation
 
@@ -74,7 +77,7 @@ ffery remove-prefix --prefix <PREFIX_TO_REMOVE> --ext <FILE_EXTENSION> <TARGET_D
 
 ### analyze-music
 
-Scans a source directory for music files, extracts metadata, and saves the analysis results. Only flac files are supported.
+Scans a source directory for music files, extracts metadata, and saves the analysis results.
 
 ```bash
 ffery analyze-music --result <OUTPUT_FILE_PATH> <SOURCE_DIRECTORY>
@@ -84,18 +87,31 @@ ffery analyze-music --result <OUTPUT_FILE_PATH> <SOURCE_DIRECTORY>
 - `--result <PATH> (-r)`: The path where the analysis results will be saved (e.g., analysis.json).
 - `<PATH>`: The path to the source directory containing music files to analyze. The scan is recursive.
 
+### get-all-metadata
+
+Scans a source directory for music files and saves all found metadata tags.
+
+```bash
+ffery get-all-metadata --result <OUTPUT_FILE_PATH> <SOURCE_DIRECTORY>
+```
+
+**Arguments:**
+- `--result <PATH> (-r)`: The path where the metadata results will be saved (e.g., metadata.json).
+- `<PATH>`: The path to the source directory containing music files to analyze. The scan is recursive.
+
 ### copy-music
 
-Copies music files from a source to a destination, sorting them by metadata (album, disc, track) before copying to ensure playback order on simple devices. Allows filename customization using metadata tags and offers options for metadata pre-processing. Only flac files are supported.
+Copies music files from a source to a destination, sorting them by metadata (album, disc, track) before copying to ensure playback order on simple devices. Allows filename and directory customization using metadata tags.
 
 **Arguments:**
 - `--src <PATH> (-s)`: The path to the source directory containing music files. Recursively scans for files.
-- `--dest <PATH> (-d)`: The path to the destination directory where files will be copied. The directory structure from the source is generally preserved.
-- `--delay-ms <MILLISECONDS>`: (Optional) A small delay introduced between file copy operations. This can sometimes help ensure the filesystem registers the intended write order. Default: 30.
-- `--override-files (o)`: (Optional) If present, existing files in the destination directory with the same name will be overwritten. Use with caution! Default: Off (files are skipped if they exist).
-- `--fat-32`: (Optional) If present, sanitizes filenames to be compatible with FAT32 filesystems (e.g., removes or replaces characters like *, ?, :, etc., and ensures length limits). Default: Off.
-- `--filename-template <TEMPLATE> (-t)`: (Optional) A mustache template string to format the output filenames. Default: `"{{#disc_number}}{{{disc_number}}}-{{/disc_number}}{{{track_number}}} {{{title}}}"`. Extension is automatically added at the end.
-- `--pad-width <NUMBER>`: (Optional) The width to pad track and disc numbers with leading zeros in the filename template. Default: 2.
+- `--dest <PATH> (-d)`: The path to the destination directory where files will be copied.
+- `--delay-ms <MILLISECONDS>`: (Optional) A small delay introduced between file copy operations. This can sometimes help ensure the filesystem registers the intended write order. Default: `30`.
+- `--override-files (-o)`: (Optional) If present, existing files in the destination directory with the same name will be overwritten. Use with caution! Default: Off (files are skipped if they exist).
+- `--fat-32`: (Optional) If present, sanitizes filenames to be compatible with FAT32 filesystems (e.g., removes or replaces characters like `*`, `?`, `:`, etc., and ensures length limits). Default: Off.
+- `--filename-template <TEMPLATE> (-t)`: (Optional) A mustache template string to format the output filenames. Default: `"{{#disc_number}}{{{disc_number}}}-{{/disc_number}}{{{track_number}}} {{{title}}}"`. The file extension is added automatically.
+- `--dir-template <TEMPLATE>`: (Optional) A mustache template string to format the output directory structure within the destination. Default: `"{{src_dir}}"`.
+- `--pad-width <NUMBER>`: (Optional) The width to pad track and disc numbers with leading zeros in the filename and directory templates. Default: `2`.
 - `--metadata-track-number-modification <MODIFICATION_TYPE> (-m)`: (Optional) Modifies the track number of the copied file. Useful if some DAPs cannot handle more complex track numbers (e.g. 3/11) or if they do not take disc number into consideration during sorting. Default: none.
 Possible values for `<MODIFICATION_TYPE>`:
     - `none`: No modification to the track number tag. The raw tag value is used.
@@ -150,8 +166,23 @@ ffery copy-music --src '/home/$USER/Music/Artists/' --dest '/run/media/$USER/dis
 
 ### unzip-music
 
-TBD
+Extracts music files from a source zip archive to a destination directory with the same sorting, templating, and metadata modification capabilities as the `copy-music` command.
+
+**Arguments:**
+- `<SRC_PATH>`: The path to the source `.zip` archive to process.
+- `--dest <PATH> (-d)`: The path to the destination directory where files will be extracted.
+- `--delay-ms <MILLISECONDS>`
+- `--override-files (-o)`
+- `--fat-32`
+- `--filename-template <TEMPLATE> (-t)`
+- `--dir-template <TEMPLATE>`
+- `--pad-width <NUMBER>`:
+- `--metadata-track-number-modification <MODIFICATION_TYPE> (-m)`
+
+*Example 1: Unzip and copy music to a FAT32 SD card*
+
+Unzips `album.zip`, sanitizes filenames for FAT32, modifies track numbers to include the disc number, and overwrites existing files.
 
 ```bash
-ffery unzip-music --dir-template '{{album}}'  --dest '.' album.zip
+ffery unzip-music --dest '/run/media/$USER/disk/Music/' -m include-disc-number --fat-32 -o album.zip
 ```
