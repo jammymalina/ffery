@@ -4,7 +4,7 @@
 
 ⚠️ **Warning:** This tool modifies files directly on your filesystem based on the commands given. Operations might be irreversible. **Always back up your data before using `ffery` or test it in a safe, non-critical directory first.**
 
-** Currently only flac files are supported with most of the commands.**
+**Most commands currently only support FLAC files.**
 
 ## Features
 
@@ -161,7 +161,12 @@ ffery copy-music \
 
 *Example 3: Copy music to a FAT32 SD card*
 ```bash
-ffery copy-music --src '/home/$USER/Music/Artists/' --dest '/run/media/$USER/disk/Artists/' -m include-disc-number --fat-32 -o
+ffery copy-music \
+    --src '/home/$USER/Music/Artists/' \
+    --dest '/run/media/$USER/disk/Artists/' \
+    -m include-disc-number \
+    --fat-32 \
+    -o
 ```
 
 ### unzip-music
@@ -184,5 +189,10 @@ Extracts music files from a source zip archive to a destination directory with t
 Unzips `album.zip`, sanitizes filenames for FAT32, modifies track numbers to include the disc number, and overwrites existing files.
 
 ```bash
-ffery unzip-music --dest '/run/media/$USER/disk/Music/' -m include-disc-number --fat-32 -o album.zip
+ffery unzip-music \
+    --dest '/run/media/$USER/disk/Music/' \
+    --metadata-track-number-modification  include-disc-number \
+    --fat-32 \
+    --override-files \
+    album.zip
 ```
