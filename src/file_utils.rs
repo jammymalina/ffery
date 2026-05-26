@@ -1,6 +1,6 @@
 use anyhow::{Context, anyhow};
 use phf::phf_set;
-use rand::Rng;
+use rand::RngExt;
 use std::{
     env,
     ffi::OsStr,
